@@ -1,5 +1,6 @@
 #include <Arduino.h>
 
+// deklaracja wykorzystanych pinow
 #define left_motor_forward_pin 4
 #define left_motor_backward_pin 3
 #define left_motor_pwm_pin 2
@@ -8,38 +9,52 @@
 #define right_motor_backward_pin 6
 #define right_motor_pwm_pin 7
 
-#define liczba_pomiarow 10
+//ustawienie parametrow filtra
+#define filter_size 10
 
-float l_speed = 0;
-float r_speed = 0;
+//deklaracja zmiennych
 float speeds = 0.6;
 float turn = 0;
 
-unsigned long t1 = millis(); 
+unsigned long t1 = millis(); // zmienna do obliczania roznic czasu w milisekundach
 unsigned int wait_time = 1000;
 
-int stage = 0; 
+int stage = 0; // etap algorytmu
+/*
+stage = 0 jazda prosto
+stage = 1 jazda do tylu przez 0.6s
+stage = 2 zakrecanie w lewo przez 0.2s
+stage = 3 zatrzymanie sie
+*/
 
-int sensorValue[liczba_pomiarow];
-int n = 0;  
-int d1 = 0;     
+int filter_values[filter_size];
+int measure_counter = 0;  
+int sensor_value = 0;     
 
-void zmierzDystans(){
-    if (n == liczba_pomiarow) {
-    n = 0;
+
+// funkcja odczytujaca i filtrujaca dane z czujnikow
+void readDistances(){
+  filter_values[measure_counter]= analogRead(A0);
+
+  // usrednienie wartosci pomiarow
+  int suma = 0;
+  for(int i=0; i<filter_size; i++) {
+    suma += filter_values[i];
   }
-  
-  sensorValue[n]= analogRead(A0);
 
-  d1 = 0;
-  for(int i=0; i<liczba_pomiarow; i++) {
-    d1 += sensorValue[i];
+  sensor_value = suma/filter_size;
+
+  measure_counter++;
+  // wyzerowanie numeru pomiaru filtra
+  if (measure_counter == filter_size) {
+    measure_counter = 0;
   }
-  d1 = d1/liczba_pomiarow;
-  n++;
 }
 
+
+// 
 void SetSpeed(float l_speed, float r_speed){
+  // wystreowanie kierunku krecenia lewego kola
   if(l_speed>0.3) {
     digitalWrite(left_motor_forward_pin, HIGH);
     digitalWrite(left_motor_backward_pin, LOW);
@@ -53,8 +68,8 @@ void SetSpeed(float l_speed, float r_speed){
     digitalWrite(left_motor_backward_pin, LOW);
   }
 
- 
-   if(r_speed>0.3) {
+  // wystreowanie kierunku krecenia prawego kola
+  if(r_speed>0.3) {
     digitalWrite(right_motor_forward_pin, HIGH);
     digitalWrite(right_motor_backward_pin, LOW);
   }
@@ -67,11 +82,11 @@ void SetSpeed(float l_speed, float r_speed){
     digitalWrite(right_motor_backward_pin, LOW);
   }
 
+  // trymowanie predkosci kol aby robot jechal prosto
   if(l_speed>0.2) l_speed -= 0.15;
-  
-
   if(l_speed<-0.2) l_speed += 0.1;
   
+  // skalowanie wartosci predkosci, odciecie wartosci min i max dla obu kol
   int l_pwm = abs(l_speed)*255;
   if(l_pwm > 255) l_pwm = 255;
   if(l_pwm < 0) l_pwm = 0;
@@ -80,26 +95,26 @@ void SetSpeed(float l_speed, float r_speed){
   if(r_pwm > 255) r_pwm = 255;
   if(r_pwm < 0) r_pwm = 0;
 
-  Serial.print("r: ");
-  Serial.print(r_pwm);
-  Serial.print(" l: ");
-  Serial.println(l_pwm);
-
+  // ustawienie wspolczynnika wypelnienia generatorow pwm
   analogWrite(left_motor_pwm_pin, l_pwm );
   analogWrite(right_motor_pwm_pin, r_pwm);
 }
 
 void setup() {
-  // initialize serial communications at 9600 bps:
+  // inicjalizacja portu szeregowego
   Serial.begin(9600);
+
   pinMode(13, OUTPUT);
 }
 
+
+// glowna petla programu
 void loop() {
-  zmierzDystans();
+  readDistances();
   
+  // algorytm sterowania
   if(stage == 0) {
-    if(d1>980){
+    if(sensor_value>980){
       digitalWrite(13, HIGH);
       t1 = millis();
       wait_time = 0;
@@ -127,7 +142,9 @@ void loop() {
     }
   }
 
-  SetSpeed(speeds + turn, speeds - turn);
+  float l_speed = speeds + turn;
+  float r_speed = speeds - turn;
+  SetSpeed(l_speed, r_speed);
 
-  Serial.println(d1); 
+  Serial.println(sensor_value); 
 }
