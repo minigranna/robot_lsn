@@ -9,11 +9,13 @@
 #define right_motor_backward_pin 6
 #define right_motor_pwm_pin 7
 
+int port_number[6] = {A0, A1, A2, A3, A4, A5};
+
 //ustawienie parametrow filtra
 #define filter_size 10
 
 //deklaracja zmiennych
-float speeds = 0.6;
+float speeds = 0.35;
 float turn = 0;
 
 unsigned long t1 = millis(); // zmienna do obliczania roznic czasu w milisekundach
@@ -27,39 +29,51 @@ stage = 2 zakrecanie w lewo przez 0.2s
 stage = 3 zatrzymanie sie
 */
 
-int filter_values[filter_size];
+int filter_values[6][filter_size];
 int measure_counter = 0;  
-int sensor_value = 0;     
+int sensor_value[6];     
 
 
 // funkcja odczytujaca i filtrujaca dane z czujnikow
 void readDistances(){
-  filter_values[measure_counter]= analogRead(A0);
+  for(int a=0; a<6; a++){
+    delay(1);
+    filter_values[a][measure_counter]= analogRead(port_number[a]);
 
-  // usrednienie wartosci pomiarow
-  int suma = 0;
-  for(int i=0; i<filter_size; i++) {
-    suma += filter_values[i];
+    // usrednienie wartosci pomiarow
+    int suma = 0;
+    for(int i=0; i<filter_size; i++) {
+      suma += filter_values[a][i];
+    }
+
+    sensor_value[a] = suma/filter_size;
+
+    measure_counter++;
+    // wyzerowanie numeru pomiaru filtra
+    if (measure_counter > filter_size) {
+      measure_counter = 0;
+    }
   }
-
-  sensor_value = suma/filter_size;
-
-  measure_counter++;
-  // wyzerowanie numeru pomiaru filtra
-  if (measure_counter == filter_size) {
-    measure_counter = 0;
-  }
+  
 }
 
+
+bool isFrontOffTable(){
+  return (sensor_value[0]>980 or sensor_value[1]>980 or sensor_value[5]>980);
+}
+
+bool isBackOffTable(){
+  return (sensor_value[2]>980 or sensor_value[3]>980 or sensor_value[4]>980);
+}
 
 // 
 void SetSpeed(float l_speed, float r_speed){
   // wystreowanie kierunku krecenia lewego kola
-  if(l_speed>0.3) {
+  if(l_speed>0.1) {
     digitalWrite(left_motor_forward_pin, HIGH);
     digitalWrite(left_motor_backward_pin, LOW);
   }
-  else if(l_speed<-0.3) {
+  else if(l_speed<-0.1) {
     digitalWrite(left_motor_forward_pin, LOW);
     digitalWrite(left_motor_backward_pin, HIGH);
   }
@@ -68,12 +82,12 @@ void SetSpeed(float l_speed, float r_speed){
     digitalWrite(left_motor_backward_pin, LOW);
   }
 
-  // wystreowanie kierunku krecenia prawego kola
-  if(r_speed>0.3) {
+  // wysterowanie kierunku krecenia prawego kola
+  if(r_speed>0.1) {
     digitalWrite(right_motor_forward_pin, HIGH);
     digitalWrite(right_motor_backward_pin, LOW);
   }
-  else if(r_speed<-0.3) {
+  else if(r_speed<-0.1) {
     digitalWrite(right_motor_forward_pin, LOW);
     digitalWrite(right_motor_backward_pin, HIGH);
   }
@@ -83,8 +97,8 @@ void SetSpeed(float l_speed, float r_speed){
   }
 
   // trymowanie predkosci kol aby robot jechal prosto
-  if(l_speed>0.2) l_speed -= 0.15;
-  if(l_speed<-0.2) l_speed += 0.1;
+  if(l_speed>0.1) l_speed -= 0.05;
+  if(l_speed<-0.1) l_speed += 0.05;
   
   // skalowanie wartosci predkosci, odciecie wartosci min i max dla obu kol
   int l_pwm = abs(l_speed)*255;
@@ -100,6 +114,56 @@ void SetSpeed(float l_speed, float r_speed){
   analogWrite(right_motor_pwm_pin, r_pwm);
 }
 
+
+void logic(){
+  // algorytm sterowania
+  if(stage == 0) {
+    if(isFrontOffTable()){
+      digitalWrite(13, HIGH);
+      t1 = millis();
+      speeds = -1;
+      turn = 0;
+      wait_time = 500;
+      stage = 1;
+    } else{
+      digitalWrite(13, LOW);
+      speeds = 0.35;
+      turn = 0;
+    }    
+  } 
+  
+  if(millis()-t1 > wait_time){
+    if(stage == 1){
+      t1 = millis();
+      speeds = 0;
+      turn = 1;
+      wait_time = 200;
+      stage = 2;
+    } else{
+      t1 = millis();
+      turn = 0;
+      speeds = 0;
+      wait_time = 0;
+      stage = 0;
+    } 
+  } else{
+    if(stage == 1){
+      if(isBackOffTable()){
+        digitalWrite(13, HIGH);
+        t1 = millis();
+        speeds = 0.35;
+        turn = 0;
+        wait_time = 100;
+        stage = 1;
+      } else{
+        digitalWrite(13, LOW);
+        speeds = 0.35;
+        turn = 0;
+      }    
+    }
+  }
+}
+
 void setup() {
   // inicjalizacja portu szeregowego
   Serial.begin(9600);
@@ -112,39 +176,16 @@ void setup() {
 void loop() {
   readDistances();
   
-  // algorytm sterowania
-  if(stage == 0) {
-    if(sensor_value>980){
-      digitalWrite(13, HIGH);
-      t1 = millis();
-      wait_time = 0;
-      stage = 1;
-    } else{
-      digitalWrite(13, LOW);
-      speeds = 0.6;
-    }    
-  }
 
-  if(millis()-t1 > wait_time){
-    t1 = millis();
-    if(stage == 1) {
-      speeds = -0.6;
-      wait_time = 600;
-      stage = 2;
-    } else if(stage == 2){
-      turn = -0.6;
-      speeds = 0;
-      wait_time = 200;
-      stage = 3;
-    } else if(stage == 3){
-      turn = 0;
-      stage = 0;      
-    }
-  }
 
   float l_speed = speeds + turn;
   float r_speed = speeds - turn;
-  SetSpeed(l_speed, r_speed);
+  // SetSpeed(l_speed, r_speed);
 
-  Serial.println(sensor_value); 
+  for(int a=0; a<6; a++){
+    Serial.print(sensor_value[a]);
+    Serial.print(" ");
+  }  
+  Serial.println("");
+    
 }
