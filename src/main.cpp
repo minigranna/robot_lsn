@@ -9,10 +9,12 @@
 #define right_motor_backward_pin 6
 #define right_motor_pwm_pin 7
 
-int port_number[6] = {A0, A1, A2, A3, A4, A5};
+int port_number[6] = {A4, A5, A3, A1, A2, A0};
 
 //ustawienie parametrow filtra
 #define filter_size 10
+
+#define sensor_level 800
 
 //deklaracja zmiennych
 float speeds = 0.35;
@@ -54,17 +56,17 @@ void readDistances(){
       measure_counter = 0;
     }
   }
-  
 }
 
 
 bool isFrontOffTable(){
-  return (sensor_value[0]>980 or sensor_value[1]>980 or sensor_value[5]>980);
+  return (sensor_value[0]>sensor_level or sensor_value[1]>sensor_level or sensor_value[5]>sensor_level);
 }
 
 bool isBackOffTable(){
-  return (sensor_value[2]>980 or sensor_value[3]>980 or sensor_value[4]>980);
+  return (sensor_value[2]>sensor_level or sensor_value[3]>sensor_level or sensor_value[4]>sensor_level);
 }
+
 
 // 
 void SetSpeed(float l_speed, float r_speed){
@@ -97,7 +99,7 @@ void SetSpeed(float l_speed, float r_speed){
   }
 
   // trymowanie predkosci kol aby robot jechal prosto
-  if(l_speed>0.1) l_speed -= 0.05;
+  if(l_speed>0.1) l_speed -= 0.08;
   if(l_speed<-0.1) l_speed += 0.05;
   
   // skalowanie wartosci predkosci, odciecie wartosci min i max dla obu kol
@@ -118,28 +120,30 @@ void SetSpeed(float l_speed, float r_speed){
 void logic(){
   // algorytm sterowania
   if(stage == 0) {
+    digitalWrite(13, HIGH);
     if(isFrontOffTable()){
-      digitalWrite(13, HIGH);
       t1 = millis();
-      speeds = -1;
+      speeds = -0.35;
       turn = 0;
-      wait_time = 500;
+      wait_time = 800;
       stage = 1;
     } else{
-      digitalWrite(13, LOW);
       speeds = 0.35;
       turn = 0;
     }    
-  } 
+  } else{
+    digitalWrite(13, LOW);
+
+  }
   
   if(millis()-t1 > wait_time){
     if(stage == 1){
       t1 = millis();
       speeds = 0;
-      turn = 1;
-      wait_time = 200;
+      turn = -0.35;
+      wait_time = 400;
       stage = 2;
-    } else{
+    } else if (stage == 2){
       t1 = millis();
       turn = 0;
       speeds = 0;
@@ -149,20 +153,16 @@ void logic(){
   } else{
     if(stage == 1){
       if(isBackOffTable()){
-        digitalWrite(13, HIGH);
         t1 = millis();
         speeds = 0.35;
         turn = 0;
         wait_time = 100;
         stage = 1;
-      } else{
-        digitalWrite(13, LOW);
-        speeds = 0.35;
-        turn = 0;
-      }    
+      } 
     }
   }
 }
+
 
 void setup() {
   // inicjalizacja portu szeregowego
@@ -175,17 +175,18 @@ void setup() {
 // glowna petla programu
 void loop() {
   readDistances();
-  
-
+  logic();
 
   float l_speed = speeds + turn;
   float r_speed = speeds - turn;
-  // SetSpeed(l_speed, r_speed);
+  SetSpeed(l_speed, r_speed);
 
-  for(int a=0; a<6; a++){
-    Serial.print(sensor_value[a]);
-    Serial.print(" ");
-  }  
-  Serial.println("");
-    
+  // for(int a=0; a<6; a++){
+  //   Serial.print(sensor_value[a]>800);
+  //   Serial.print(" ");
+  // }  
+  // Serial.print(isFrontOffTable());
+  // Serial.print(" ");
+  // Serial.print(isBackOffTable());
+  // Serial.println("");
 }
